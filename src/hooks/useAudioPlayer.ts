@@ -1,10 +1,29 @@
 import { useEffect, useRef, useCallback } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { readFile } from "@tauri-apps/plugin-fs";
 import { usePlayerStore } from "../stores/playerStore";
 import { useLibraryStore } from "../stores/libraryStore";
 
+const MIME_TYPES: Record<string, string> = {
+  mp3: "audio/mpeg",
+  flac: "audio/flac",
+  ogg: "audio/ogg",
+  opus: "audio/opus",
+  wav: "audio/wav",
+  aac: "audio/aac",
+  m4a: "audio/mp4",
+  wma: "audio/x-ms-wma",
+  aiff: "audio/aiff",
+  ape: "audio/x-ape",
+};
+
+function getMimeType(path: string): string {
+  const ext = path.split(".").pop()?.toLowerCase() || "";
+  return MIME_TYPES[ext] || "audio/mpeg";
+}
+
 export function useAudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
   const {
     currentTrack,
     isPlaying,
@@ -66,19 +85,45 @@ export function useAudioPlayer() {
     };
   }, []);
 
-  // Load new track
+  // Load new track via FS plugin (read file → Blob URL)
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !currentTrack) return;
 
-    const src = convertFileSrc(currentTrack.path);
-    audio.src = src;
-    audio.load();
-    hasCountedRef.current = false;
+    let cancelled = false;
 
-    if (isPlaying) {
-      audio.play().catch(console.error);
-    }
+    const loadTrack = async () => {
+      try {
+        // Revoke previous blob URL
+        if (blobUrlRef.current) {
+          URL.revokeObjectURL(blobUrlRef.current);
+          blobUrlRef.current = null;
+        }
+
+        const data = await readFile(currentTrack.path);
+        if (cancelled) return;
+
+        const blob = new Blob([data], { type: getMimeType(currentTrack.path) });
+        const url = URL.createObjectURL(blob);
+        blobUrlRef.current = url;
+
+        audio.src = url;
+        hasCountedRef.current = false;
+
+        const state = usePlayerStore.getState();
+        if (state.isPlaying) {
+          await audio.play();
+        }
+      } catch (err) {
+        console.error("Failed to load track:", err);
+      }
+    };
+
+    loadTrack();
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentTrack?.id]);
 
   // Play/pause

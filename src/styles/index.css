@@ -12,7 +12,7 @@
   --accent-hover: #ff4436;
   --accent-dim: #8b1e14;
   --radius: 0px;
-  --font: "Doto", monospace;
+  --font: "Doto", "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", sans-serif;
   --font-size: 12px;
   --font-size-sm: 10px;
   --font-size-lg: 14px;
