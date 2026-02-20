@@ -1,0 +1,12 @@
+heki has been deployed.
+
+{{- if .Values.ingress.enabled }}
+Access the application at:
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+Run the following to access the application:
+  kubectl port-forward svc/{{ include "heki.fullname" . }} 8080:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+  Then open http://localhost:8080
+{{- end }}

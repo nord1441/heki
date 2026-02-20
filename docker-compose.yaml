@@ -1,0 +1,24 @@
+services:
+  # Web frontend (nginx)
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  # Full Tauri build (outputs to ./build-output)
+  tauri-build:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: tauri-build
+    volumes:
+      - build-output:/app/src-tauri/target/release/bundle
+    profiles:
+      - build
+
+volumes:
+  build-output:

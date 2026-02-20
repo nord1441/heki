@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: heki-web
+  namespace: heki
+  labels:
+    app: heki
+    component: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: heki
+      component: web
+  template:
+    metadata:
+      labels:
+        app: heki
+        component: web
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/nord1441/heki:latest
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 5
