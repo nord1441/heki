@@ -169,3 +169,250 @@ XDG_DATA_HOME=/custom/data/path npm run tauri dev
 ### データのバックアップ
 
 データベースファイル (`heki.db`) をコピーするだけでライブラリ情報を完全にバックアップできます。復元時は同じ場所に配置してください。楽曲ファイル本体はデータベースには含まれず、ファイルパスのみが記録されています。
+
+## Docker
+
+heki は Docker によるコンテナ化に対応しています。`Dockerfile` はマルチステージビルドで構成されており、用途に応じてビルドターゲットを選択できます。
+
+### ビルドステージ一覧
+
+| ステージ名 | ベースイメージ | 用途 |
+|---|---|---|
+| `frontend-build` | `node:20-slim` | React フロントエンドのビルド（`npm run build` → `dist/`） |
+| `tauri-build` | `rust:1.82-bookworm` | Tauri アプリケーションのフルビルド（deb / AppImage 生成） |
+| `web` | `nginx:1.27-alpine` | ビルド済みフロントエンドを nginx で配信 |
+
+### Web フロントエンドのイメージビルド
+
+フロントエンドを nginx で配信する軽量イメージをビルドします。
+
+```bash
+docker build --target web -t heki-web .
+```
+
+### コンテナの起動
+
+```bash
+docker run -d -p 8080:80 heki-web
+```
+
+ブラウザで `http://localhost:8080` にアクセスすると Web UI が表示されます。
+
+> **注意**: Web UI モードでは Tauri ネイティブ API（ファイルスキャン、オーディオ再生、DB アクセス等）は利用できません。UI の確認・デモ用途としてご利用ください。
+
+### Tauri ネイティブビルド
+
+Linux 向けのインストーラー（deb / AppImage）を Docker コンテナ内で生成します。
+
+```bash
+docker build --target tauri-build -t heki-tauri-build .
+```
+
+ビルド成果物は `tauri-build` ステージ内の `/app/src-tauri/target/release/bundle/` に生成されます。
+
+## Docker Compose
+
+`docker-compose.yaml` にはサービスとして以下が定義されています。
+
+| サービス | ターゲット | ポート | プロファイル | 説明 |
+|---|---|---|---|---|
+| `web` | `web` | `8080:80` | (デフォルト) | nginx による Web フロントエンド配信 |
+| `tauri-build` | `tauri-build` | — | `build` | Tauri ネイティブビルド（成果物をボリュームに出力） |
+
+### Web サービスの起動
+
+```bash
+docker compose up web
+```
+
+`http://localhost:8080` でアクセスできます。バックグラウンド起動する場合は `-d` を付与してください。
+
+### Tauri ビルドの実行
+
+```bash
+docker compose --profile build up tauri-build
+```
+
+ビルド成果物は `build-output` ボリュームに保存されます。
+
+### 停止・クリーンアップ
+
+```bash
+# サービスの停止
+docker compose down
+
+# ボリュームも含めて削除
+docker compose down -v
+```
+
+## CI/CD（GitHub Actions）
+
+`.github/workflows/docker-build.yml` に以下の 2 つのジョブが定義されています。
+
+### build-and-push
+
+| 項目 | 内容 |
+|---|---|
+| トリガー | `main` ブランチへの push / pull_request |
+| 処理内容 | `web` ターゲットの Docker イメージをビルドし GHCR へプッシュ |
+| レジストリ | `ghcr.io/<owner>/heki` |
+| タグ戦略 | ブランチ名、セマンティックバージョン（`v*` タグ）、コミット SHA |
+| キャッシュ | GitHub Actions Cache (`type=gha`) |
+
+pull_request 時はビルドのみ行い、プッシュは行いません。
+
+### build-tauri
+
+| 項目 | 内容 |
+|---|---|
+| トリガー | `v*` タグの push 時のみ |
+| 処理内容 | Ubuntu 上で Tauri アプリをネイティブビルドし、GitHub Release にアップロード |
+| 成果物 | `*.deb`、`*.AppImage` |
+
+### タグによるリリースの流れ
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+これにより以下が自動実行されます。
+
+1. Docker イメージ `ghcr.io/<owner>/heki:0.1.0` がビルド・プッシュされる
+2. Tauri ネイティブビルドが実行され、deb / AppImage が GitHub Release にアップロードされる
+
+## Kubernetes
+
+`k8s/` ディレクトリに Kubernetes マニフェストが用意されています。
+
+### マニフェスト一覧
+
+| ファイル | リソース | 説明 |
+|---|---|---|
+| `namespace.yaml` | Namespace | `heki` namespace の作成 |
+| `deployment.yaml` | Deployment | Web フロントエンドの Pod を 2 レプリカでデプロイ |
+| `service.yaml` | Service (ClusterIP) | Pod への内部ルーティング |
+| `ingress.yaml` | Ingress | 外部からのアクセス（`heki.example.com`） |
+
+### デプロイ手順
+
+```bash
+# 全マニフェストを一括適用
+kubectl apply -f k8s/
+
+# 状態確認
+kubectl get all -n heki
+```
+
+### Ingress のホスト名変更
+
+`k8s/ingress.yaml` の `spec.rules[].host` を実際のドメイン名に変更してください。
+
+```yaml
+rules:
+  - host: heki.your-domain.com   # ← ここを変更
+```
+
+### Deployment のカスタマイズ
+
+| パラメータ | 場所 | デフォルト |
+|---|---|---|
+| レプリカ数 | `deployment.yaml` → `spec.replicas` | `2` |
+| イメージ | `deployment.yaml` → `spec.template.spec.containers[].image` | `ghcr.io/nord1441/heki:latest` |
+| CPU リクエスト / リミット | `deployment.yaml` → `resources` | `50m` / `200m` |
+| メモリ リクエスト / リミット | `deployment.yaml` → `resources` | `64Mi` / `128Mi` |
+
+### クリーンアップ
+
+```bash
+kubectl delete -f k8s/
+```
+
+## Helm チャート
+
+`helm/heki/` に Helm チャートが用意されており、パラメータ化されたデプロイが可能です。
+
+### チャート構成
+
+```
+helm/heki/
+├── Chart.yaml              # チャートメタデータ
+├── values.yaml             # デフォルト値
+└── templates/
+    ├── _helpers.tpl         # テンプレートヘルパー関数
+    ├── deployment.yaml      # Deployment
+    ├── service.yaml         # Service
+    ├── ingress.yaml         # Ingress（values で有効化）
+    ├── hpa.yaml             # HorizontalPodAutoscaler（values で有効化）
+    └── NOTES.txt            # インストール後のガイド表示
+```
+
+### インストール
+
+```bash
+# デフォルト設定でインストール
+helm install heki helm/heki -n heki --create-namespace
+
+# Ingress を有効にしてインストール
+helm install heki helm/heki -n heki --create-namespace \
+  --set ingress.enabled=true \
+  --set ingress.hosts[0].host=heki.your-domain.com \
+  --set ingress.hosts[0].paths[0].path=/ \
+  --set ingress.hosts[0].paths[0].pathType=Prefix
+```
+
+### 主要パラメータ
+
+| パラメータ | 説明 | デフォルト |
+|---|---|---|
+| `replicaCount` | Pod のレプリカ数 | `2` |
+| `image.repository` | コンテナイメージのリポジトリ | `ghcr.io/nord1441/heki` |
+| `image.tag` | イメージタグ（空の場合 `appVersion` を使用） | `""` |
+| `image.pullPolicy` | イメージの pull ポリシー | `IfNotPresent` |
+| `service.type` | Service の種別 | `ClusterIP` |
+| `service.port` | Service のポート番号 | `80` |
+| `ingress.enabled` | Ingress の有効化 | `false` |
+| `ingress.className` | Ingress クラス名 | `nginx` |
+| `ingress.hosts` | Ingress のホスト・パス設定 | `[{host: heki.example.com, ...}]` |
+| `ingress.tls` | TLS 設定 | `[]` |
+| `resources.requests.cpu` | CPU リクエスト | `50m` |
+| `resources.requests.memory` | メモリリクエスト | `64Mi` |
+| `resources.limits.cpu` | CPU リミット | `200m` |
+| `resources.limits.memory` | メモリリミット | `128Mi` |
+| `autoscaling.enabled` | HPA の有効化 | `false` |
+| `autoscaling.minReplicas` | 最小レプリカ数 | `2` |
+| `autoscaling.maxReplicas` | 最大レプリカ数 | `10` |
+| `autoscaling.targetCPUUtilizationPercentage` | スケールアウトの CPU 閾値 | `80` |
+
+### TLS 付き Ingress の例
+
+```bash
+helm install heki helm/heki -n heki --create-namespace \
+  --set ingress.enabled=true \
+  --set ingress.hosts[0].host=heki.your-domain.com \
+  --set ingress.hosts[0].paths[0].path=/ \
+  --set ingress.hosts[0].paths[0].pathType=Prefix \
+  --set ingress.tls[0].secretName=heki-tls \
+  --set ingress.tls[0].hosts[0]=heki.your-domain.com
+```
+
+### HPA（オートスケール）を有効にする
+
+```bash
+helm install heki helm/heki -n heki --create-namespace \
+  --set autoscaling.enabled=true \
+  --set autoscaling.minReplicas=2 \
+  --set autoscaling.maxReplicas=10
+```
+
+### アップグレード
+
+```bash
+helm upgrade heki helm/heki -n heki --set image.tag=0.2.0
+```
+
+### アンインストール
+
+```bash
+helm uninstall heki -n heki
+```
