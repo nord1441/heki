@@ -6,8 +6,135 @@ mod scanner;
 use db::Database;
 use models::{MoodCategory, Playlist, Track};
 use scanner::LibraryScanner;
+use std::io::{Read, Seek, SeekFrom};
 use std::sync::Mutex;
 use tauri::State;
+
+fn percent_decode(input: &str) -> String {
+    let mut bytes = Vec::new();
+    let src = input.as_bytes();
+    let mut i = 0;
+    while i < src.len() {
+        if src[i] == b'%' && i + 2 < src.len() {
+            if let Ok(byte) = u8::from_str_radix(&input[i + 1..i + 3], 16) {
+                bytes.push(byte);
+                i += 3;
+                continue;
+            }
+        }
+        bytes.push(src[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+fn audio_content_type(path: &str) -> &'static str {
+    match path.rsplit('.').next().map(|e| e.to_lowercase()).as_deref() {
+        Some("mp3") => "audio/mpeg",
+        Some("flac") => "audio/flac",
+        Some("ogg") => "audio/ogg",
+        Some("opus") => "audio/opus",
+        Some("wav") => "audio/wav",
+        Some("aac") => "audio/aac",
+        Some("m4a") => "audio/mp4",
+        Some("wma") => "audio/x-ms-wma",
+        Some("aiff") | Some("aif") => "audio/aiff",
+        Some("ape") => "audio/x-ape",
+        _ => "application/octet-stream",
+    }
+}
+
+fn serve_audio(request: tauri::http::Request<Vec<u8>>) -> tauri::http::Response<Vec<u8>> {
+    let raw_path = percent_decode(request.uri().path().trim_start_matches('/'));
+
+    let mut file = match std::fs::File::open(&raw_path) {
+        Ok(f) => f,
+        Err(_) => {
+            return tauri::http::Response::builder()
+                .status(404)
+                .body(Vec::new())
+                .unwrap();
+        }
+    };
+    let file_size = match file.metadata() {
+        Ok(m) => m.len(),
+        Err(_) => {
+            return tauri::http::Response::builder()
+                .status(500)
+                .body(Vec::new())
+                .unwrap();
+        }
+    };
+    let content_type = audio_content_type(&raw_path);
+
+    // Handle Range requests for streaming playback
+    if let Some(range_header) = request.headers().get("range").and_then(|v| v.to_str().ok()) {
+        if let Some(spec) = range_header.strip_prefix("bytes=") {
+            let parts: Vec<&str> = spec.splitn(2, '-').collect();
+            let start: u64 = parts[0].parse().unwrap_or(0);
+            let end: u64 = if parts.len() > 1 && !parts[1].is_empty() {
+                parts[1]
+                    .parse::<u64>()
+                    .unwrap_or(file_size - 1)
+                    .min(file_size - 1)
+            } else {
+                file_size - 1
+            };
+
+            if start >= file_size {
+                return tauri::http::Response::builder()
+                    .status(416)
+                    .header("Content-Range", format!("bytes */{file_size}"))
+                    .body(Vec::new())
+                    .unwrap();
+            }
+
+            let length = end - start + 1;
+            if file.seek(SeekFrom::Start(start)).is_err() {
+                return tauri::http::Response::builder()
+                    .status(500)
+                    .body(Vec::new())
+                    .unwrap();
+            }
+            let mut buf = vec![0u8; length as usize];
+            if file.read_exact(&mut buf).is_err() {
+                return tauri::http::Response::builder()
+                    .status(500)
+                    .body(Vec::new())
+                    .unwrap();
+            }
+
+            return tauri::http::Response::builder()
+                .status(206)
+                .header("Content-Type", content_type)
+                .header("Content-Length", length.to_string())
+                .header(
+                    "Content-Range",
+                    format!("bytes {start}-{end}/{file_size}"),
+                )
+                .header("Accept-Ranges", "bytes")
+                .body(buf)
+                .unwrap();
+        }
+    }
+
+    // Full file response
+    let mut data = Vec::with_capacity(file_size as usize);
+    if file.read_to_end(&mut data).is_err() {
+        return tauri::http::Response::builder()
+            .status(500)
+            .body(Vec::new())
+            .unwrap();
+    }
+
+    tauri::http::Response::builder()
+        .status(200)
+        .header("Content-Type", content_type)
+        .header("Content-Length", file_size.to_string())
+        .header("Accept-Ranges", "bytes")
+        .body(data)
+        .unwrap()
+}
 
 struct AppState {
     db: Mutex<Database>,
@@ -210,6 +337,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .manage(AppState { db: Mutex::new(db) })
+        .register_uri_scheme_protocol("heki-audio", |_app, request| serve_audio(request))
         .invoke_handler(tauri::generate_handler![
             scan_directory,
             get_all_tracks,
