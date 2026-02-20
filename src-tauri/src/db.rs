@@ -392,6 +392,17 @@ impl Database {
     }
 }
 
+/// テスト用: インメモリ DB を作成する
+#[cfg(test)]
+impl Database {
+    pub fn new_in_memory() -> Result<Self, Box<dyn std::error::Error>> {
+        let conn = Connection::open_in_memory()?;
+        let db = Database { conn };
+        db.init_tables()?;
+        Ok(db)
+    }
+}
+
 fn dirs_next() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "linux")]
     {
@@ -424,5 +435,241 @@ fn dirs_next() -> Option<std::path::PathBuf> {
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
         Some(std::path::PathBuf::from("./heki_data"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{AudioAnalysis, MoodCategory};
+
+    fn sample_track(id: &str, path: &str) -> Track {
+        Track {
+            id: id.to_string(),
+            path: path.to_string(),
+            title: format!("Title {}", id),
+            artist: "Test Artist".to_string(),
+            album: "Test Album".to_string(),
+            album_artist: String::new(),
+            genre: "Rock".to_string(),
+            track_number: Some(1),
+            disc_number: Some(1),
+            year: Some(2024),
+            duration_secs: 200.0,
+            file_format: "FLAC".to_string(),
+            bitrate: Some(1411),
+            sample_rate: Some(44100),
+            bpm: None,
+            energy: None,
+            valence: None,
+            mood: None,
+            play_count: 0,
+            rating: 0,
+            date_added: "2024-01-01T00:00:00Z".to_string(),
+            has_artwork: false,
+        }
+    }
+
+    #[test]
+    // インメモリ DB の初期化とテーブル作成が成功すること
+    fn create_database_in_memory() {
+        let db = Database::new_in_memory().unwrap();
+        let tracks = db.get_all_tracks().unwrap();
+        assert!(tracks.is_empty());
+    }
+
+    #[test]
+    // トラックの挿入と取得が正しく動作すること
+    fn insert_and_get_track() {
+        let db = Database::new_in_memory().unwrap();
+        let track = sample_track("t1", "/music/song.flac");
+        db.insert_track(&track).unwrap();
+        let tracks = db.get_all_tracks().unwrap();
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].title, "Title t1");
+    }
+
+    #[test]
+    // 同一パスのトラックを再挿入すると上書き (INSERT OR REPLACE) されること
+    fn insert_duplicate_path_replaces() {
+        let db = Database::new_in_memory().unwrap();
+        let t1 = sample_track("t1", "/music/song.flac");
+        db.insert_track(&t1).unwrap();
+        let t2 = Track {
+            id: "t2".to_string(),
+            title: "Updated Title".to_string(),
+            ..sample_track("t2", "/music/song.flac")
+        };
+        db.insert_track(&t2).unwrap();
+        let tracks = db.get_all_tracks().unwrap();
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].title, "Updated Title");
+    }
+
+    #[test]
+    // get_track_by_path でパス指定取得できること
+    fn get_track_by_path() {
+        let db = Database::new_in_memory().unwrap();
+        db.insert_track(&sample_track("t1", "/music/a.flac")).unwrap();
+        db.insert_track(&sample_track("t2", "/music/b.flac")).unwrap();
+        let track = db.get_track_by_path("/music/b.flac").unwrap();
+        assert_eq!(track.id, "t2");
+    }
+
+    #[test]
+    // アーティスト一覧が重複なく取得できること
+    fn get_artists_distinct() {
+        let db = Database::new_in_memory().unwrap();
+        let mut t1 = sample_track("t1", "/a.flac");
+        t1.artist = "Alpha".to_string();
+        let mut t2 = sample_track("t2", "/b.flac");
+        t2.artist = "Alpha".to_string();
+        let mut t3 = sample_track("t3", "/c.flac");
+        t3.artist = "Beta".to_string();
+        db.insert_track(&t1).unwrap();
+        db.insert_track(&t2).unwrap();
+        db.insert_track(&t3).unwrap();
+        let artists = db.get_artists().unwrap();
+        assert_eq!(artists.len(), 2);
+    }
+
+    #[test]
+    // アーティスト / アルバム / ジャンル別のフィルター取得が正しいこと
+    fn get_tracks_by_artist_album_genre() {
+        let db = Database::new_in_memory().unwrap();
+        let mut t1 = sample_track("t1", "/a.flac");
+        t1.artist = "A".to_string();
+        t1.album = "X".to_string();
+        t1.genre = "Pop".to_string();
+        let mut t2 = sample_track("t2", "/b.flac");
+        t2.artist = "B".to_string();
+        t2.album = "Y".to_string();
+        t2.genre = "Rock".to_string();
+        db.insert_track(&t1).unwrap();
+        db.insert_track(&t2).unwrap();
+
+        assert_eq!(db.get_tracks_by_artist("A").unwrap().len(), 1);
+        assert_eq!(db.get_tracks_by_album("Y").unwrap().len(), 1);
+        assert_eq!(db.get_tracks_by_genre("Pop").unwrap().len(), 1);
+    }
+
+    #[test]
+    // 検索がタイトル・アーティスト・アルバムにまたがる LIKE 検索であること
+    fn search_tracks_matches_title_artist_album() {
+        let db = Database::new_in_memory().unwrap();
+        let mut t1 = sample_track("t1", "/a.flac");
+        t1.title = "Moonlight Sonata".to_string();
+        t1.artist = "Beethoven".to_string();
+        let mut t2 = sample_track("t2", "/b.flac");
+        t2.title = "Clair de Lune".to_string();
+        t2.album = "Moonlight Collection".to_string();
+        db.insert_track(&t1).unwrap();
+        db.insert_track(&t2).unwrap();
+
+        let results = db.search_tracks("moon").unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    // 解析結果の更新でムード情報が反映されること
+    fn update_track_analysis() {
+        let db = Database::new_in_memory().unwrap();
+        db.insert_track(&sample_track("t1", "/a.flac")).unwrap();
+        let analysis = AudioAnalysis {
+            bpm: 128.0,
+            energy: 0.8,
+            valence: 0.7,
+            mood: MoodCategory::Energetic,
+        };
+        db.update_track_analysis("/a.flac", &analysis).unwrap();
+        let track = db.get_track_by_path("/a.flac").unwrap();
+        assert_eq!(track.bpm, Some(128.0));
+        assert_eq!(track.mood, Some(MoodCategory::Energetic));
+    }
+
+    #[test]
+    // 未解析トラックのみが get_unanalyzed_tracks で返されること
+    fn get_unanalyzed_tracks() {
+        let db = Database::new_in_memory().unwrap();
+        db.insert_track(&sample_track("t1", "/a.flac")).unwrap();
+        db.insert_track(&sample_track("t2", "/b.flac")).unwrap();
+        let analysis = AudioAnalysis {
+            bpm: 120.0, energy: 0.5, valence: 0.5, mood: MoodCategory::Mellow,
+        };
+        db.update_track_analysis("/a.flac", &analysis).unwrap();
+        let unanalyzed = db.get_unanalyzed_tracks().unwrap();
+        assert_eq!(unanalyzed.len(), 1);
+        assert_eq!(unanalyzed[0].id, "t2");
+    }
+
+    #[test]
+    // ムード別のトラック取得が正しく動作すること
+    fn get_tracks_by_mood() {
+        let db = Database::new_in_memory().unwrap();
+        db.insert_track(&sample_track("t1", "/a.flac")).unwrap();
+        let analysis = AudioAnalysis {
+            bpm: 140.0, energy: 0.9, valence: 0.8, mood: MoodCategory::Energetic,
+        };
+        db.update_track_analysis("/a.flac", &analysis).unwrap();
+        let tracks = db.get_tracks_by_mood(&MoodCategory::Energetic).unwrap();
+        assert_eq!(tracks.len(), 1);
+        let empty = db.get_tracks_by_mood(&MoodCategory::Relax).unwrap();
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    // プレイリストの作成・一覧取得・削除が正しく動作すること
+    fn playlist_crud() {
+        let db = Database::new_in_memory().unwrap();
+        let pl = db.create_playlist("My Favorites").unwrap();
+        assert_eq!(pl.name, "My Favorites");
+        assert!(!pl.is_smart);
+
+        let playlists = db.get_playlists().unwrap();
+        assert_eq!(playlists.len(), 1);
+
+        db.delete_playlist(&pl.id).unwrap();
+        let playlists = db.get_playlists().unwrap();
+        assert!(playlists.is_empty());
+    }
+
+    #[test]
+    // プレイリストへのトラック追加・削除が正しく動作すること
+    fn playlist_track_management() {
+        let db = Database::new_in_memory().unwrap();
+        db.insert_track(&sample_track("t1", "/a.flac")).unwrap();
+        db.insert_track(&sample_track("t2", "/b.flac")).unwrap();
+        let pl = db.create_playlist("Test").unwrap();
+
+        db.add_to_playlist(&pl.id, "t1").unwrap();
+        db.add_to_playlist(&pl.id, "t2").unwrap();
+        let tracks = db.get_playlist_tracks(&pl.id).unwrap();
+        assert_eq!(tracks.len(), 2);
+
+        db.remove_from_playlist(&pl.id, "t1").unwrap();
+        let tracks = db.get_playlist_tracks(&pl.id).unwrap();
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].id, "t2");
+    }
+
+    #[test]
+    // 再生回数のインクリメントが正しく動作すること
+    fn increment_play_count() {
+        let db = Database::new_in_memory().unwrap();
+        db.insert_track(&sample_track("t1", "/a.flac")).unwrap();
+        db.increment_play_count("t1").unwrap();
+        db.increment_play_count("t1").unwrap();
+        let track = db.get_track_by_path("/a.flac").unwrap();
+        assert_eq!(track.play_count, 2);
+    }
+
+    #[test]
+    // レーティングの更新が正しく動作すること
+    fn update_rating() {
+        let db = Database::new_in_memory().unwrap();
+        db.insert_track(&sample_track("t1", "/a.flac")).unwrap();
+        db.update_rating("t1", 5).unwrap();
+        let track = db.get_track_by_path("/a.flac").unwrap();
+        assert_eq!(track.rating, 5);
     }
 }

@@ -165,3 +165,150 @@ pub struct AudioAnalysis {
     pub valence: f64,
     pub mood: MoodCategory,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    // 8種類すべてのムードカテゴリが all() で取得できること
+    fn mood_category_all_returns_eight_categories() {
+        let all = MoodCategory::all();
+        assert_eq!(all.len(), 8);
+    }
+
+    #[test]
+    // 高エネルギー・高ヴァレンス・高テンポが Energetic に分類されること
+    fn from_features_energetic() {
+        let mood = MoodCategory::from_features(140.0, 0.8, 0.7);
+        assert_eq!(mood, MoodCategory::Energetic);
+    }
+
+    #[test]
+    // 高エネルギー・高ヴァレンス・低テンポが Upbeat に分類されること
+    fn from_features_upbeat() {
+        let mood = MoodCategory::from_features(100.0, 0.7, 0.6);
+        assert_eq!(mood, MoodCategory::Upbeat);
+    }
+
+    #[test]
+    // 高エネルギー・低ヴァレンス・高テンポが Extreme に分類されること
+    fn from_features_extreme() {
+        let mood = MoodCategory::from_features(150.0, 0.8, 0.3);
+        assert_eq!(mood, MoodCategory::Extreme);
+    }
+
+    #[test]
+    // 高エネルギー・低ヴァレンス・低テンポが Dance に分類されること
+    fn from_features_dance_high_energy() {
+        let mood = MoodCategory::from_features(100.0, 0.7, 0.3);
+        assert_eq!(mood, MoodCategory::Dance);
+    }
+
+    #[test]
+    // 低エネルギー・高ヴァレンス・高テンポが Dance に分類されること
+    fn from_features_dance_low_energy() {
+        let mood = MoodCategory::from_features(130.0, 0.4, 0.6);
+        assert_eq!(mood, MoodCategory::Dance);
+    }
+
+    #[test]
+    // 低エネルギー・高ヴァレンス・低テンポが Lounge に分類されること
+    fn from_features_lounge() {
+        let mood = MoodCategory::from_features(90.0, 0.4, 0.6);
+        assert_eq!(mood, MoodCategory::Lounge);
+    }
+
+    #[test]
+    // 低エネルギー・低ヴァレンス・高テンポが Emotional に分類されること
+    fn from_features_emotional() {
+        let mood = MoodCategory::from_features(130.0, 0.4, 0.3);
+        assert_eq!(mood, MoodCategory::Emotional);
+    }
+
+    #[test]
+    // 非常に低いエネルギーが Relax に分類されること
+    fn from_features_relax() {
+        let mood = MoodCategory::from_features(80.0, 0.2, 0.3);
+        assert_eq!(mood, MoodCategory::Relax);
+    }
+
+    #[test]
+    // エネルギーが中程度（0.3以上0.6以下）で低ヴァレンス・低テンポが Mellow に分類されること
+    fn from_features_mellow() {
+        let mood = MoodCategory::from_features(80.0, 0.4, 0.3);
+        assert_eq!(mood, MoodCategory::Mellow);
+    }
+
+    #[test]
+    // as_str() と from_str() が双方向変換できること
+    fn as_str_from_str_roundtrip() {
+        for mood in MoodCategory::all() {
+            let s = mood.as_str();
+            let parsed = MoodCategory::from_str(s);
+            assert_eq!(parsed, Some(mood));
+        }
+    }
+
+    #[test]
+    // 不正な文字列で from_str() が None を返すこと
+    fn from_str_invalid_returns_none() {
+        assert_eq!(MoodCategory::from_str("invalid"), None);
+        assert_eq!(MoodCategory::from_str(""), None);
+    }
+
+    #[test]
+    // MoodCategory の serde JSON シリアライズが snake_case であること
+    fn serde_json_roundtrip() {
+        let mood = MoodCategory::Energetic;
+        let json = serde_json::to_string(&mood).unwrap();
+        assert_eq!(json, "\"energetic\"");
+        let parsed: MoodCategory = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, MoodCategory::Energetic);
+    }
+
+    #[test]
+    // AudioAnalysis の JSON シリアライズ/デシリアライズが正しいこと
+    fn audio_analysis_serde() {
+        let analysis = AudioAnalysis {
+            bpm: 128.0,
+            energy: 0.75,
+            valence: 0.6,
+            mood: MoodCategory::Energetic,
+        };
+        let json = serde_json::to_string(&analysis).unwrap();
+        let parsed: AudioAnalysis = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.bpm, 128.0);
+        assert_eq!(parsed.mood, MoodCategory::Energetic);
+    }
+
+    #[test]
+    // 各カテゴリの description が空文字列でないこと
+    fn description_non_empty() {
+        for mood in MoodCategory::all() {
+            assert!(!mood.description().is_empty());
+        }
+    }
+
+    #[test]
+    // energy_range の min < max で 0.0〜1.0 の範囲内であること
+    fn energy_range_valid() {
+        for mood in MoodCategory::all() {
+            let (min, max) = mood.energy_range();
+            assert!(min < max, "{:?}: {} >= {}", mood, min, max);
+            assert!(min >= 0.0);
+            assert!(max <= 1.0);
+        }
+    }
+
+    #[test]
+    // valence_range の min < max で 0.0〜1.0 の範囲内であること
+    fn valence_range_valid() {
+        for mood in MoodCategory::all() {
+            let (min, max) = mood.valence_range();
+            assert!(min < max, "{:?}: {} >= {}", mood, min, max);
+            assert!(min >= 0.0);
+            assert!(max <= 1.0);
+        }
+    }
+}
