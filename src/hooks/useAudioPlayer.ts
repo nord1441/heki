@@ -94,21 +94,22 @@ export function useAudioPlayer() {
 
     const loadTrack = async () => {
       try {
-        // Revoke previous blob URL
-        if (blobUrlRef.current) {
-          URL.revokeObjectURL(blobUrlRef.current);
-          blobUrlRef.current = null;
-        }
-
         const data = await readFile(currentTrack.path);
         if (cancelled) return;
 
         const blob = new Blob([data], { type: getMimeType(currentTrack.path) });
         const url = URL.createObjectURL(blob);
+
+        // Revoke previous blob URL only after new source is ready
+        const oldUrl = blobUrlRef.current;
         blobUrlRef.current = url;
 
         audio.src = url;
         hasCountedRef.current = false;
+
+        if (oldUrl) {
+          URL.revokeObjectURL(oldUrl);
+        }
 
         const state = usePlayerStore.getState();
         if (state.isPlaying) {
