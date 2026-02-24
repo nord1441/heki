@@ -1,6 +1,14 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import type { MoodCategory, Playlist, SortConfig, Track, ViewMode } from "../types";
+import type {
+  MoodCategory,
+  NavidromeAuth,
+  Playlist,
+  SortConfig,
+  SourceMode,
+  Track,
+  ViewMode,
+} from "../types";
 
 interface LibraryState {
   tracks: Track[];
@@ -20,6 +28,10 @@ interface LibraryState {
   isScanning: boolean;
   isAnalyzing: boolean;
   scanProgress: string;
+
+  sourceMode: SourceMode;
+  navidromeAuth: NavidromeAuth | null;
+  navidromeConnected: boolean;
 
   loadLibrary: () => Promise<void>;
   scanDirectory: (path: string) => Promise<void>;
@@ -44,6 +56,13 @@ interface LibraryState {
   incrementPlayCount: (trackId: string) => Promise<void>;
   updateRating: (trackId: string, rating: number) => Promise<void>;
   getArtwork: (path: string) => Promise<string | null>;
+
+  connectNavidrome: (
+    url: string,
+    username: string,
+    password: string
+  ) => Promise<void>;
+  disconnectNavidrome: () => Promise<void>;
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
@@ -65,14 +84,91 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   isAnalyzing: false,
   scanProgress: "",
 
-  loadLibrary: async () => {
+  sourceMode: "local",
+  navidromeAuth: null,
+  navidromeConnected: false,
+
+  connectNavidrome: async (url, username, password) => {
     try {
-      const tracks = await invoke<Track[]>("get_all_tracks");
-      const artists = await invoke<string[]>("get_artists");
-      const albums = await invoke<string[]>("get_albums");
-      const genres = await invoke<string[]>("get_genres");
-      const playlists = await invoke<Playlist[]>("get_playlists");
-      set({ tracks, artists, albums, genres, playlists });
+      const auth = await invoke<NavidromeAuth>("nd_connect", {
+        url,
+        username,
+        password,
+      });
+      set({
+        sourceMode: "navidrome",
+        navidromeAuth: auth,
+        navidromeConnected: true,
+        // Reset library state
+        tracks: [],
+        filteredTracks: [],
+        artists: [],
+        albums: [],
+        genres: [],
+        playlists: [],
+        selectedArtist: null,
+        selectedAlbum: null,
+        selectedGenre: null,
+        selectedPlaylist: null,
+        selectedMood: null,
+        viewMode: "library",
+        searchQuery: "",
+      });
+      await get().loadLibrary();
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  disconnectNavidrome: async () => {
+    try {
+      await invoke("nd_disconnect");
+    } catch {
+      // Ignore disconnect errors
+    }
+    set({
+      sourceMode: "local",
+      navidromeAuth: null,
+      navidromeConnected: false,
+      tracks: [],
+      filteredTracks: [],
+      artists: [],
+      albums: [],
+      genres: [],
+      playlists: [],
+      selectedArtist: null,
+      selectedAlbum: null,
+      selectedGenre: null,
+      selectedPlaylist: null,
+      selectedMood: null,
+      viewMode: "library",
+      searchQuery: "",
+    });
+    await get().loadLibrary();
+  },
+
+  loadLibrary: async () => {
+    const { sourceMode } = get();
+    try {
+      if (sourceMode === "navidrome") {
+        const [tracks, artists, albums, genres, playlists] = await Promise.all([
+          invoke<Track[]>("nd_get_all_tracks"),
+          invoke<string[]>("nd_get_artists"),
+          invoke<string[]>("nd_get_albums"),
+          invoke<string[]>("nd_get_genres"),
+          invoke<Playlist[]>("nd_get_playlists"),
+        ]);
+        set({ tracks, artists, albums, genres, playlists });
+      } else {
+        const [tracks, artists, albums, genres, playlists] = await Promise.all([
+          invoke<Track[]>("get_all_tracks"),
+          invoke<string[]>("get_artists"),
+          invoke<string[]>("get_albums"),
+          invoke<string[]>("get_genres"),
+          invoke<Playlist[]>("get_playlists"),
+        ]);
+        set({ tracks, artists, albums, genres, playlists });
+      }
       get().applyFilters();
     } catch (e) {
       console.error("Failed to load library:", e);
@@ -133,12 +229,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   setSelectedPlaylist: async (id) => {
+    const { sourceMode } = get();
     set({ selectedPlaylist: id, viewMode: "playlist" });
     if (id) {
       try {
-        const tracks = await invoke<Track[]>("get_playlist_tracks", {
-          playlistId: id,
-        });
+        const cmd =
+          sourceMode === "navidrome"
+            ? "nd_get_playlist_tracks"
+            : "get_playlist_tracks";
+        const tracks = await invoke<Track[]>(cmd, { playlistId: id });
         set({ filteredTracks: tracks });
       } catch (e) {
         console.error("Failed to load playlist tracks:", e);
@@ -226,8 +325,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   createPlaylist: async (name) => {
+    const { sourceMode } = get();
     try {
-      await invoke("create_playlist", { name });
+      const cmd =
+        sourceMode === "navidrome" ? "nd_create_playlist" : "create_playlist";
+      await invoke(cmd, { name });
       await get().loadPlaylists();
     } catch (e) {
       console.error("Failed to create playlist:", e);
@@ -235,8 +337,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   deletePlaylist: async (id) => {
+    const { sourceMode } = get();
     try {
-      await invoke("delete_playlist", { playlistId: id });
+      const cmd =
+        sourceMode === "navidrome" ? "nd_delete_playlist" : "delete_playlist";
+      await invoke(cmd, { playlistId: id });
       await get().loadPlaylists();
     } catch (e) {
       console.error("Failed to delete playlist:", e);
@@ -244,8 +349,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   addToPlaylist: async (playlistId, trackId) => {
+    const { sourceMode } = get();
     try {
-      await invoke("add_to_playlist", { playlistId, trackId });
+      const cmd =
+        sourceMode === "navidrome" ? "nd_add_to_playlist" : "add_to_playlist";
+      await invoke(cmd, { playlistId, trackId });
       await get().loadPlaylists();
     } catch (e) {
       console.error("Failed to add to playlist:", e);
@@ -253,8 +361,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   removeFromPlaylist: async (playlistId, trackId) => {
+    const { sourceMode } = get();
     try {
-      await invoke("remove_from_playlist", { playlistId, trackId });
+      const cmd =
+        sourceMode === "navidrome"
+          ? "nd_remove_from_playlist"
+          : "remove_from_playlist";
+      await invoke(cmd, { playlistId, trackId });
       if (get().selectedPlaylist === playlistId) {
         await get().setSelectedPlaylist(playlistId);
       }
@@ -264,8 +377,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   loadPlaylists: async () => {
+    const { sourceMode } = get();
     try {
-      const playlists = await invoke<Playlist[]>("get_playlists");
+      const cmd =
+        sourceMode === "navidrome" ? "nd_get_playlists" : "get_playlists";
+      const playlists = await invoke<Playlist[]>(cmd);
       set({ playlists });
     } catch (e) {
       console.error("Failed to load playlists:", e);
@@ -273,24 +389,39 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   loadPlaylistTracks: async (playlistId) => {
+    const { sourceMode } = get();
     try {
-      return await invoke<Track[]>("get_playlist_tracks", { playlistId });
+      const cmd =
+        sourceMode === "navidrome"
+          ? "nd_get_playlist_tracks"
+          : "get_playlist_tracks";
+      return await invoke<Track[]>(cmd, { playlistId });
     } catch {
       return [];
     }
   },
 
   incrementPlayCount: async (trackId) => {
+    const { sourceMode } = get();
     try {
-      await invoke("increment_play_count", { trackId });
+      if (sourceMode === "navidrome") {
+        await invoke("nd_scrobble", { trackId });
+      } else {
+        await invoke("increment_play_count", { trackId });
+      }
     } catch (e) {
       console.error("Failed to increment play count:", e);
     }
   },
 
   updateRating: async (trackId, rating) => {
+    const { sourceMode } = get();
     try {
-      await invoke("update_rating", { trackId, rating });
+      if (sourceMode === "navidrome") {
+        await invoke("nd_set_rating", { trackId, rating });
+      } else {
+        await invoke("update_rating", { trackId, rating });
+      }
       set((state) => ({
         tracks: state.tracks.map((t) =>
           t.id === trackId ? { ...t, rating } : t
@@ -305,6 +436,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   getArtwork: async (path) => {
+    const { sourceMode, navidromeAuth } = get();
+    if (sourceMode === "navidrome" && path.startsWith("navidrome://")) {
+      if (!navidromeAuth) return null;
+      const songId = path.replace("navidrome://", "");
+      return `${navidromeAuth.url}/rest/getCoverArt?id=${songId}&size=300&${navidromeAuth.auth_params}`;
+    }
     try {
       return await invoke<string | null>("get_track_artwork", { path });
     } catch {

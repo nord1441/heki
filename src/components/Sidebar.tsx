@@ -28,6 +28,10 @@ export function Sidebar() {
     isScanning,
     isAnalyzing,
     tracks,
+    sourceMode,
+    navidromeConnected,
+    connectNavidrome,
+    disconnectNavidrome,
   } = useLibraryStore();
 
   const [newPlaylistName, setNewPlaylistName] = useState("");
@@ -35,6 +39,11 @@ export function Sidebar() {
   const [expandedSection, setExpandedSection] = useState<string | null>(
     "library"
   );
+  const [ndUrl, setNdUrl] = useState("");
+  const [ndUser, setNdUser] = useState("");
+  const [ndPass, setNdPass] = useState("");
+  const [ndConnecting, setNdConnecting] = useState(false);
+  const [ndError, setNdError] = useState("");
 
   const handleImport = async () => {
     const selected = await open({ directory: true, multiple: false });
@@ -53,6 +62,27 @@ export function Sidebar() {
 
   const toggleSection = (section: string) => {
     setExpandedSection(expandedSection === section ? null : section);
+  };
+
+  const handleNdConnect = async () => {
+    if (!ndUrl.trim() || !ndUser.trim()) return;
+    setNdConnecting(true);
+    setNdError("");
+    try {
+      await connectNavidrome(ndUrl.trim(), ndUser.trim(), ndPass);
+    } catch (e) {
+      setNdError(String(e));
+    } finally {
+      setNdConnecting(false);
+    }
+  };
+
+  const handleNdDisconnect = async () => {
+    await disconnectNavidrome();
+    setNdUrl("");
+    setNdUser("");
+    setNdPass("");
+    setNdError("");
   };
 
   const moodCategories: MoodCategory[] = [
@@ -74,17 +104,90 @@ export function Sidebar() {
         <h1 className="app-logo">heki</h1>
       </div>
 
-      <div className="sidebar-actions">
-        <button
-          className="btn btn-primary btn-sm"
-          onClick={handleImport}
-          disabled={isScanning}
-        >
-          {isScanning ? "SCANNING..." : "+ IMPORT"}
-        </button>
-      </div>
+      {sourceMode === "local" && (
+        <div className="sidebar-actions">
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={handleImport}
+            disabled={isScanning}
+          >
+            {isScanning ? "SCANNING..." : "+ IMPORT"}
+          </button>
+        </div>
+      )}
 
       <nav className="sidebar-nav">
+        {/* Server Section */}
+        <div className="nav-section">
+          <button
+            className="nav-section-header"
+            onClick={() => toggleSection("server")}
+          >
+            <span className="section-indicator">
+              {expandedSection === "server" ? "v" : ">"}
+            </span>
+            <span>SERVER</span>
+            {navidromeConnected && (
+              <span className="server-status-badge">ON</span>
+            )}
+          </button>
+
+          {expandedSection === "server" && (
+            <div className="nav-items">
+              {navidromeConnected ? (
+                <div className="server-connected">
+                  <span className="server-connected-label">NAVIDROME</span>
+                  <span className="server-connected-url" title={ndUrl}>
+                    {ndUrl.replace(/^https?:\/\//, "")}
+                  </span>
+                  <button
+                    className="btn btn-secondary btn-sm nav-action-btn"
+                    onClick={handleNdDisconnect}
+                  >
+                    DISCONNECT
+                  </button>
+                </div>
+              ) : (
+                <div className="server-form">
+                  <input
+                    type="text"
+                    value={ndUrl}
+                    onChange={(e) => setNdUrl(e.target.value)}
+                    placeholder="https://navidrome.example.com"
+                    className="input-sm server-input"
+                    disabled={ndConnecting}
+                  />
+                  <input
+                    type="text"
+                    value={ndUser}
+                    onChange={(e) => setNdUser(e.target.value)}
+                    placeholder="Username"
+                    className="input-sm server-input"
+                    disabled={ndConnecting}
+                  />
+                  <input
+                    type="password"
+                    value={ndPass}
+                    onChange={(e) => setNdPass(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleNdConnect()}
+                    placeholder="Password"
+                    className="input-sm server-input"
+                    disabled={ndConnecting}
+                  />
+                  {ndError && <span className="server-error">{ndError}</span>}
+                  <button
+                    className="btn btn-primary btn-sm nav-action-btn"
+                    onClick={handleNdConnect}
+                    disabled={ndConnecting || !ndUrl.trim() || !ndUser.trim()}
+                  >
+                    {ndConnecting ? "CONNECTING..." : "CONNECT"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Library Section */}
         <div className="nav-section">
           <button
@@ -181,13 +284,15 @@ export function Sidebar() {
 
           {expandedSection === "mood" && (
             <div className="nav-items">
-              <button
-                className="btn btn-secondary btn-sm nav-action-btn"
-                onClick={analyzeAll}
-                disabled={isAnalyzing}
-              >
-                {isAnalyzing ? "ANALYZING..." : "ANALYZE ALL"}
-              </button>
+              {sourceMode === "local" && (
+                <button
+                  className="btn btn-secondary btn-sm nav-action-btn"
+                  onClick={analyzeAll}
+                  disabled={isAnalyzing}
+                >
+                  {isAnalyzing ? "ANALYZING..." : "ANALYZE ALL"}
+                </button>
+              )}
 
               <button
                 className={`nav-item ${viewMode === "mood" && !selectedMood ? "active" : ""}`}

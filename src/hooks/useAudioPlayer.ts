@@ -22,6 +22,10 @@ function getMimeType(path: string): string {
   return MIME_TYPES[ext] || "audio/mpeg";
 }
 
+function isNavidromeTrack(path: string): boolean {
+  return path.startsWith("navidrome://");
+}
+
 export function useAudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const blobUrlRef = useRef<string | null>(null);
@@ -86,7 +90,7 @@ export function useAudioPlayer() {
     };
   }, []);
 
-  // Load new track via FS plugin (read file → Blob URL)
+  // Load new track (local file or Navidrome stream)
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !currentTrack) return;
@@ -95,21 +99,38 @@ export function useAudioPlayer() {
 
     const loadTrack = async () => {
       try {
-        const data = await readFile(currentTrack.path);
-        if (cancelled) return;
+        if (isNavidromeTrack(currentTrack.path)) {
+          // Navidrome: use streaming URL directly
+          const { navidromeAuth } = useLibraryStore.getState();
+          if (!navidromeAuth) return;
 
-        const blob = new Blob([data], { type: getMimeType(currentTrack.path) });
-        const url = URL.createObjectURL(blob);
+          const songId = currentTrack.path.replace("navidrome://", "");
+          const streamUrl = `${navidromeAuth.url}/rest/stream?id=${songId}&${navidromeAuth.auth_params}`;
 
-        // Revoke previous blob URL after new source is ready to prevent
-        // audio glitch from premature revocation
-        const oldUrl = blobUrlRef.current;
-        blobUrlRef.current = url;
-        audio.src = url;
-        hasCountedRef.current = false;
+          if (blobUrlRef.current) {
+            URL.revokeObjectURL(blobUrlRef.current);
+            blobUrlRef.current = null;
+          }
 
-        if (oldUrl) {
-          URL.revokeObjectURL(oldUrl);
+          if (cancelled) return;
+          audio.src = streamUrl;
+          hasCountedRef.current = false;
+        } else {
+          // Local: read file and create blob URL
+          const data = await readFile(currentTrack.path);
+          if (cancelled) return;
+
+          const blob = new Blob([data], { type: getMimeType(currentTrack.path) });
+          const url = URL.createObjectURL(blob);
+
+          const oldUrl = blobUrlRef.current;
+          blobUrlRef.current = url;
+          audio.src = url;
+          hasCountedRef.current = false;
+
+          if (oldUrl) {
+            URL.revokeObjectURL(oldUrl);
+          }
         }
 
         const state = usePlayerStore.getState();

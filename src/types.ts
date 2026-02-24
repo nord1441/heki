@@ -66,6 +66,13 @@ export interface SortConfig {
 
 export type ViewMode = "library" | "artist" | "album" | "genre" | "playlist" | "mood" | "queue";
 
+export type SourceMode = "local" | "navidrome";
+
+export interface NavidromeAuth {
+  url: string;
+  auth_params: string;
+}
+
 export interface MoodInfo {
   category: MoodCategory;
   label: string;

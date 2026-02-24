@@ -1,10 +1,12 @@
 mod analyzer;
 mod db;
 mod models;
+mod navidrome;
 mod scanner;
 
 use db::Database;
 use models::{MoodCategory, Playlist, Track};
+use navidrome::{NavidromeAuth, SubsonicClient};
 use scanner::LibraryScanner;
 use std::io::{Read, Seek, SeekFrom};
 use std::sync::Mutex;
@@ -138,6 +140,10 @@ fn serve_audio(request: tauri::http::Request<Vec<u8>>) -> tauri::http::Response<
 
 struct AppState {
     db: Mutex<Database>,
+}
+
+struct NavidromeState {
+    client: Mutex<Option<SubsonicClient>>,
 }
 
 #[tauri::command]
@@ -329,6 +335,135 @@ async fn update_rating(
         .map_err(|e| e.to_string())
 }
 
+// --- Navidrome / Subsonic commands ---
+
+fn get_nd_client(state: &State<'_, NavidromeState>) -> Result<SubsonicClient, String> {
+    let guard = state.client.lock().map_err(|e| e.to_string())?;
+    guard
+        .as_ref()
+        .cloned()
+        .ok_or_else(|| "Not connected to Navidrome".to_string())
+}
+
+#[tauri::command]
+async fn nd_connect(
+    url: String,
+    username: String,
+    password: String,
+    state: State<'_, NavidromeState>,
+) -> Result<NavidromeAuth, String> {
+    let client = SubsonicClient::new(&url, &username, &password);
+    client.ping().await?;
+    let auth = client.auth();
+    *state.client.lock().map_err(|e| e.to_string())? = Some(client);
+    Ok(auth)
+}
+
+#[tauri::command]
+async fn nd_disconnect(state: State<'_, NavidromeState>) -> Result<(), String> {
+    *state.client.lock().map_err(|e| e.to_string())? = None;
+    Ok(())
+}
+
+#[tauri::command]
+async fn nd_get_all_tracks(state: State<'_, NavidromeState>) -> Result<Vec<Track>, String> {
+    let client = get_nd_client(&state)?;
+    client.get_all_songs().await
+}
+
+#[tauri::command]
+async fn nd_get_artists(state: State<'_, NavidromeState>) -> Result<Vec<String>, String> {
+    let client = get_nd_client(&state)?;
+    client.get_artists().await
+}
+
+#[tauri::command]
+async fn nd_get_albums(state: State<'_, NavidromeState>) -> Result<Vec<String>, String> {
+    let client = get_nd_client(&state)?;
+    client.get_albums().await
+}
+
+#[tauri::command]
+async fn nd_get_genres(state: State<'_, NavidromeState>) -> Result<Vec<String>, String> {
+    let client = get_nd_client(&state)?;
+    client.get_genres().await
+}
+
+#[tauri::command]
+async fn nd_search(query: String, state: State<'_, NavidromeState>) -> Result<Vec<Track>, String> {
+    let client = get_nd_client(&state)?;
+    client.search(&query).await
+}
+
+#[tauri::command]
+async fn nd_get_playlists(state: State<'_, NavidromeState>) -> Result<Vec<Playlist>, String> {
+    let client = get_nd_client(&state)?;
+    client.get_playlists().await
+}
+
+#[tauri::command]
+async fn nd_get_playlist_tracks(
+    playlist_id: String,
+    state: State<'_, NavidromeState>,
+) -> Result<Vec<Track>, String> {
+    let client = get_nd_client(&state)?;
+    client.get_playlist_songs(&playlist_id).await
+}
+
+#[tauri::command]
+async fn nd_create_playlist(
+    name: String,
+    state: State<'_, NavidromeState>,
+) -> Result<Playlist, String> {
+    let client = get_nd_client(&state)?;
+    client.create_playlist(&name).await
+}
+
+#[tauri::command]
+async fn nd_delete_playlist(
+    playlist_id: String,
+    state: State<'_, NavidromeState>,
+) -> Result<(), String> {
+    let client = get_nd_client(&state)?;
+    client.delete_playlist(&playlist_id).await
+}
+
+#[tauri::command]
+async fn nd_add_to_playlist(
+    playlist_id: String,
+    track_id: String,
+    state: State<'_, NavidromeState>,
+) -> Result<(), String> {
+    let client = get_nd_client(&state)?;
+    client.add_to_playlist(&playlist_id, &track_id).await
+}
+
+#[tauri::command]
+async fn nd_remove_from_playlist(
+    playlist_id: String,
+    track_id: String,
+    state: State<'_, NavidromeState>,
+) -> Result<(), String> {
+    let client = get_nd_client(&state)?;
+    client.remove_from_playlist(&playlist_id, &track_id).await
+}
+
+#[tauri::command]
+async fn nd_scrobble(track_id: String, state: State<'_, NavidromeState>) -> Result<(), String> {
+    let client = get_nd_client(&state)?;
+    client.scrobble(&track_id).await
+}
+
+#[tauri::command]
+async fn nd_set_rating(
+    track_id: String,
+    rating: u8,
+    state: State<'_, NavidromeState>,
+) -> Result<(), String> {
+    let client = get_nd_client(&state)?;
+    client.set_rating(&track_id, rating).await
+}
+
 pub fn run() {
     let db = Database::new().expect("Failed to initialize database");
 
@@ -337,6 +472,9 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .manage(AppState { db: Mutex::new(db) })
+        .manage(NavidromeState {
+            client: Mutex::new(None),
+        })
         .register_uri_scheme_protocol("heki-audio", |_app, request| serve_audio(request))
         .invoke_handler(tauri::generate_handler![
             scan_directory,
@@ -361,6 +499,21 @@ pub fn run() {
             get_track_artwork,
             increment_play_count,
             update_rating,
+            nd_connect,
+            nd_disconnect,
+            nd_get_all_tracks,
+            nd_get_artists,
+            nd_get_albums,
+            nd_get_genres,
+            nd_search,
+            nd_get_playlists,
+            nd_get_playlist_tracks,
+            nd_create_playlist,
+            nd_delete_playlist,
+            nd_add_to_playlist,
+            nd_remove_from_playlist,
+            nd_scrobble,
+            nd_set_rating,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
