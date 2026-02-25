@@ -5,7 +5,7 @@ import { formatDurationLong } from "../types";
 export function StatusBar() {
   const { tracks, filteredTracks, isScanning, isAnalyzing, scanProgress } =
     useLibraryStore();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, font, toggleFont } = useTheme();
 
   const totalDuration = filteredTracks.reduce(
     (sum, t) => sum + t.duration_secs,
@@ -30,6 +30,14 @@ export function StatusBar() {
         )}
       </div>
       <div className="status-right">
+        <button
+          className="btn-icon font-toggle"
+          onClick={toggleFont}
+          title={`Switch to ${font === "doto" ? "Helvetica" : "Doto"} font`}
+        >
+          {font === "doto" ? "HELV" : "DOTO"}
+        </button>
+        <span className="status-separator">/</span>
         <button
           className="btn-icon theme-toggle"
           onClick={toggleTheme}
