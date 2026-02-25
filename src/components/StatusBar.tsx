@@ -33,9 +33,9 @@ export function StatusBar() {
         <button
           className="btn-icon font-toggle"
           onClick={toggleFont}
-          title={`Switch to ${font === "doto" ? "Helvetica" : "Doto"} font`}
+          title={`Switch to ${font === "doto" ? "Bebas Neue" : "Doto"} font`}
         >
-          {font === "doto" ? "HELV" : "DOTO"}
+          {font === "doto" ? "BEBAS" : "DOTO"}
         </button>
         <span className="status-separator">/</span>
         <button

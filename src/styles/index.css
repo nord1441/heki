@@ -1,7 +1,7 @@
 /* ============================================================
    heki — minimal music player
    Aesthetic: Teenage Engineering / Nothing
-   Fonts: Doto (Google Fonts) / Helvetica Ultra Compressed
+   Fonts: Doto / Bebas Neue (Google Fonts)
    Theme: Black/White + Red accent
    ============================================================ */
 
@@ -24,9 +24,9 @@
   --status-bar-height: 24px;
 }
 
-/* Font: Helvetica Ultra Compressed */
-[data-font="helvetica"] {
-  --font: "Helvetica Ultra Compressed", "Helvetica Neue Ultra Compressed", "Helvetica Compressed", "Helvetica Neue Condensed Bold", "Impact", "Arial Narrow", "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", sans-serif;
+/* Font: Bebas Neue */
+[data-font="bebas"] {
+  --font: "Bebas Neue", "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", sans-serif;
   --font-size: 13px;
   --font-size-sm: 11px;
   --font-size-lg: 15px;

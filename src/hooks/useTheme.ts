@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 
 type Theme = "dark" | "light";
-type FontFamily = "doto" | "helvetica";
+type FontFamily = "doto" | "bebas";
 
 export function useTheme() {
   const [theme, setThemeState] = useState<Theme>(() => {
@@ -12,7 +12,7 @@ export function useTheme() {
 
   const [font, setFontState] = useState<FontFamily>(() => {
     const saved = localStorage.getItem("heki-font");
-    if (saved === "doto" || saved === "helvetica") return saved;
+    if (saved === "doto" || saved === "bebas") return saved;
     return "doto";
   });
 
@@ -35,7 +35,7 @@ export function useTheme() {
   }, []);
 
   const toggleFont = useCallback(() => {
-    setFontState((prev) => (prev === "doto" ? "helvetica" : "doto"));
+    setFontState((prev) => (prev === "doto" ? "bebas" : "doto"));
   }, []);
 
   return { theme, setTheme, toggleTheme, font, toggleFont };
