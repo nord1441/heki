@@ -1,7 +1,7 @@
 /* ============================================================
    heki — minimal music player
-   Aesthetic: Teenage Engineering / Nothing
-   Fonts: Doto / Bebas Neue (Google Fonts)
+   Aesthetic: Swiss Modern / International Typographic Style
+   Fonts: Inter (body) + Bebas Neue (display) via Google Fonts
    Theme: Black/White + Red accent
    ============================================================ */
 
@@ -12,26 +12,17 @@
   --accent-hover: #ff4436;
   --accent-dim: #8b1e14;
   --radius: 0px;
-  --font: "Doto", "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", sans-serif;
+  --font: "Inter", "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", sans-serif;
+  --font-display: "Bebas Neue", "Inter", sans-serif;
   --font-size: 12px;
   --font-size-sm: 10px;
   --font-size-lg: 14px;
   --font-size-xl: 18px;
-  --font-size-logo: 28px;
+  --font-size-logo: 32px;
   --transition: 120ms ease;
   --sidebar-width: 220px;
   --now-playing-height: 72px;
   --status-bar-height: 24px;
-}
-
-/* Font: Bebas Neue */
-[data-font="bebas"] {
-  --font: "Bebas Neue", "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", sans-serif;
-  --font-size: 13px;
-  --font-size-sm: 11px;
-  --font-size-lg: 15px;
-  --font-size-xl: 20px;
-  --font-size-logo: 32px;
 }
 
 /* Dark theme (default) */
@@ -102,8 +93,8 @@ body {
   color: var(--text-primary);
   background: var(--bg-primary);
   -webkit-font-smoothing: antialiased;
-  letter-spacing: 0.04em;
-  line-height: 1.4;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
   user-select: none;
 }
 
@@ -157,10 +148,10 @@ body {
 }
 
 .app-logo {
-  font-family: var(--font);
+  font-family: var(--font-display);
   font-size: var(--font-size-logo);
-  font-weight: 900;
-  letter-spacing: 0.12em;
+  font-weight: 400;
+  letter-spacing: 0.15em;
   color: var(--text-primary);
   text-transform: uppercase;
 }
@@ -192,8 +183,8 @@ body {
   color: var(--text-secondary);
   font-family: var(--font);
   font-size: var(--font-size-sm);
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   cursor: pointer;
   text-align: left;
   transition: color var(--transition);
@@ -241,7 +232,7 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.01em;
 }
 
 .nav-item:hover {
@@ -263,8 +254,9 @@ body {
   padding: 4px 16px 2px 34px;
   font-size: var(--font-size-sm);
   color: var(--text-tertiary);
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .nav-sub-items {
@@ -288,8 +280,8 @@ body {
   margin-left: auto;
   color: var(--accent);
   font-size: var(--font-size-sm);
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 .server-form {
@@ -318,9 +310,9 @@ body {
 
 .server-connected-label {
   font-size: var(--font-size-sm);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--accent);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
 }
 
 .server-connected-url {
@@ -365,7 +357,7 @@ body {
   cursor: pointer;
   text-align: left;
   padding: 5px 0 5px 34px;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -430,11 +422,12 @@ body {
 }
 
 .view-title {
-  font-family: var(--font);
-  font-size: var(--font-size-xl);
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
   color: var(--text-primary);
+  text-transform: uppercase;
 }
 
 .content-body {
@@ -470,7 +463,7 @@ body {
   color: var(--text-primary);
   font-family: var(--font);
   font-size: var(--font-size);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.01em;
   width: 160px;
 }
 
@@ -515,9 +508,9 @@ body {
 }
 
 .mood-banner-label {
-  font-weight: 700;
+  font-weight: 600;
   font-size: var(--font-size);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.02em;
 }
 
 .mood-banner-desc {
@@ -554,10 +547,11 @@ body {
 .track-table th {
   padding: 6px 8px;
   font-size: var(--font-size-sm);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-tertiary);
   text-align: left;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   cursor: pointer;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
@@ -661,7 +655,7 @@ body {
   gap: 8px;
   color: var(--text-tertiary);
   font-size: var(--font-size-lg);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.02em;
   padding: 60px 0;
 }
 
@@ -765,12 +759,12 @@ body {
 
 .np-title {
   font-size: var(--font-size);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.01em;
 }
 
 .np-title.np-empty {
@@ -807,11 +801,11 @@ body {
   color: var(--text-secondary);
   font-family: var(--font);
   font-size: var(--font-size);
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   padding: 4px 10px;
   transition: all var(--transition);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
 }
 
 .np-btn:hover {
@@ -955,7 +949,7 @@ body {
 .status-right {
   font-size: var(--font-size-sm);
   color: var(--text-tertiary);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.02em;
 }
 
 .status-progress {
@@ -979,15 +973,9 @@ body {
   }
 }
 
-.theme-toggle,
-.font-toggle {
-  font-weight: 700;
-  letter-spacing: 0.08em;
-}
-
-.status-separator {
-  color: var(--text-tertiary);
-  font-size: var(--font-size-sm);
+.theme-toggle {
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 .status-right {
@@ -1012,9 +1000,11 @@ body {
 }
 
 .queue-header h2 {
-  font-size: var(--font-size-lg);
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 400;
   letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* --- Mood Map --- */
@@ -1030,9 +1020,11 @@ body {
 }
 
 .mood-map-header h2 {
-  font-size: var(--font-size-lg);
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   margin-bottom: 4px;
 }
 
@@ -1050,8 +1042,9 @@ body {
   position: absolute;
   font-size: var(--font-size-sm);
   color: var(--text-tertiary);
-  letter-spacing: 0.1em;
-  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  text-transform: uppercase;
   z-index: 5;
 }
 
@@ -1142,9 +1135,9 @@ body {
 
 .mood-node-label {
   font-size: var(--font-size-sm);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-secondary);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.02em;
 }
 
 .mood-node-count {
@@ -1186,8 +1179,9 @@ body {
 /* --- Buttons --- */
 .btn {
   font-family: var(--font);
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   cursor: pointer;
   transition: all var(--transition);
   border: 1px solid;
